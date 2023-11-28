@@ -1,5 +1,31 @@
 //This code is used to control a vacuum cleaner prototype developed by Bruface program students in Belgium
 //
+
+
+
+
+motor 1 PWM
+motor 1 in1
+motor 1 in2
+
+motor 2 PWM
+motor 2 in1
+motor 2 in2
+
+encoder 1
+encoder 2
+
+trig 1
+echo 1
+trig 2
+echo 2
+trig 3
+echo 3
+trig 4
+echo 4
+
+cleaning system 
+
 //                                               +-----+
 //                  +----[PWR]-------------------| USB |--+
 //                  |                            +-----+  |

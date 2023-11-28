@@ -1,3 +1,30 @@
+//This code is used to control a vacuum cleaner prototype developed by Bruface program students in Belgium
+//                                               +-----+
+//                  +----[PWR]-------------------| USB |--+
+//                  |                            +-----+  |
+//                  |         GND/RST2  [ ][ ]            |
+//                  |       MOSI2/SCK2  [ ][ ]  A5/SCL[ ] |    
+//                  |          5V/MISO2 [ ][ ]  A4/SDA[ ] |    
+//                  |                             AREF[ ] |
+//                  |                              GND[ ] |
+//                  | [ ]N/C                    SCK/13[ ] |   Motor Right int4
+//                  | [ ]IOREF                 MISO/12[ ] |   Motor Right int3
+//                  | [ ]RST                   MOSI/11[ ]~|   Motor Right PWM
+//                  | [ ]3V3    +---+               10[ ]~|   Motor Left PWM
+//                  | [ ]5v    -| A |-               9[ ]~|   Motor Left int2
+//                  | [ ]GND   -| R |-               8[ ] |   Motor Left int1
+//                  | [ ]GND   -| D |-                    |
+//                  | [ ]Vin   -| U |-               7[ ] |   TRIG 3
+//                  |          -| I |-               6[ ]~|   ECHO 3
+//                  | [ ]A0    -| N |-               5[ ]~|   TRIG 2
+//                  | [ ]A1    -| O |-               4[ ] |   ECHO 2
+//                  | [ ]A2     +---+           INT1/3[ ]~|   ENCODER L
+// cleanning syst   | [ ]A3                     INT0/2[ ] |   ENCODER R
+//          ECHO 4  | [ ]A4/SDA  RST SCK MISO     TX>1[ ] |   TRIG 1
+//          TRIG 4  | [ ]A5/SCL  [ ] [ ] [ ]      RX<0[ ] |   ECHO 1
+//                  |            [ ] [ ] [ ]              |
+//                  |  UNO_R3    GND MOSI 5V  ____________/
+//                   \_______________________/ 
 
 // ultrasonic sensors output and input 
   const int triggerPin1 = 2;
@@ -21,7 +48,7 @@
   //right motor input voltage: IN1 = HIGH IN2 = LOW to go forward
   const int IN1 = 8; 
   const int IN2 = 9;
-  const int ENA = 9;  //PWM of right motor
+  const int ENA = ;  //PWM of right motor
 
   //left motor input voltage
   const int IN3 = 12; 
@@ -44,10 +71,15 @@ void setup() {
   pinMode(IN4, OUTPUT);
   pinMode(ENB, OUTPUT);
   //pinMode(irPin, INPUT);
+
+  attachInterrupt(digitalPinToInterrupt(interruptPin), blink, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(interruptPin), blink, CHANGE);
 }
 
-void loop() {
 
+
+void loop() {
+  int encoder1()
   //continuously checks the sensors for obstacle
 
   //sensor1 
@@ -110,20 +142,3 @@ void loop() {
     }
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
