@@ -1,4 +1,4 @@
-int analogPin = 3;     
+int analogPin = 2;     
 int data = 0;           
 char userInput;
 int a = 0;
@@ -21,7 +21,7 @@ if(Serial.available()> 0){
                 a = a+1;  
             }
             data = analogRead(analogPin);    // read the input pin
-            Serial.println(a);            
+            Serial.println(data);            
             
       } // if user input 'g' 
   } // Serial.available

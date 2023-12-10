@@ -22,7 +22,7 @@ def animate(i, dataList, ser):
     ax.clear()                                          # Clear last data frame
     ax.plot(dataList)                                   # Plot new data frame
     
-    ax.set_ylim([0, 1200])                              # Set Y axis limit of plot
+    ax.set_ylim([0, 5])                              # Set Y axis limit of plot
     ax.set_title("Arduino Data")                        # Set title of figure
     ax.set_ylabel("Value")                              # Set title of y axis 
 
@@ -31,7 +31,7 @@ dataList = []                                           # Create empty list vari
 fig = plt.figure()                                      # Create Matplotlib plots fig is the 'higher level' plot window
 ax = fig.add_subplot(111)                               # Add subplot to main fig window
 
-ser = serial.Serial("COM7", 9600)                       # Establish Serial object with COM port and BAUD rate to match Arduino Port/rate
+ser = serial.Serial("COM11", 9600)                       # Establish Serial object with COM port and BAUD rate to match Arduino Port/rate
 time.sleep(2)                                           # Time delay for Arduino Serial initialization 
 
                                                         # Matplotlib Animation Fuction that takes takes care of real time plot.

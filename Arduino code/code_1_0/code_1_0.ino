@@ -7,12 +7,12 @@
 //                  |          5V/MISO2 [ ][ ]  A4/SDA[ ] |    
 //                  |                             AREF[ ] |
 //                  |                              GND[ ] |
-//                  | [ ]N/C                    SCK/13[ ] |   Motor Right int4
-//                  | [ ]IOREF                 MISO/12[ ] |   Motor Right int3
-//                  | [ ]RST                   MOSI/11[ ]~|   Motor Right PWM
-//                  | [ ]3V3    +---+               10[ ]~|   Motor Left PWM
-//                  | [ ]5v    -| A |-               9[ ]~|   Motor Left int2
-//                  | [ ]GND   -| R |-               8[ ] |   Motor Left int1
+//                  | [ ]N/C                    SCK/13[ ] |   Motor left int4
+//                  | [ ]IOREF                 MISO/12[ ] |   Motor left int3
+//                  | [ ]RST                   MOSI/11[ ]~|   Motor left PWM ENB
+//                  | [ ]3V3    +---+               10[ ]~|   Motor right PWM ENA
+//                  | [ ]5v    -| A |-               9[ ]~|   Motor right int2
+//                  | [ ]GND   -| R |-               8[ ] |   Motor right int1
 //                  | [ ]GND   -| D |-                    |
 //                  | [ ]Vin   -| U |-               7[ ] |   TRIG 3
 //                  |          -| I |-               6[ ]~|   ECHO 3
@@ -26,6 +26,12 @@
 //                  |  UNO_R3    GND MOSI 5V  ____________/
 //                   \_______________________/ 
 
+// use delayMicroseconds() instead of millis() as interruptions are used for the encoders
+// Encoders
+  const int rightEncoder = 2;
+  const int leftEncoder = 3;
+  volatile int rightPulses = 0;
+  volatile int leftPulses = 0;
 // ultrasonic sensors output and input 
   const int triggerPin1 = 2;
   const int echoPin1 = 0; 
@@ -34,6 +40,10 @@
   const int triggerPin3 = 7;
   const int echoPin3 = 2;
   //int irpin =2;   infrarated sensor for stairs
+
+  //robot geometric constants
+  r = //radius of the wheel
+  l = //distance from the center of mass to the wheels
 
   //timevariables for each sensors measuring the time the signal takes to come back
   //sensor 1 is left, 2 is front, 3 is right
@@ -45,15 +55,29 @@
   int distanceRight;
   int a=0;
 
-  //right motor input voltage: IN1 = HIGH IN2 = LOW to go forward
+  //controller variables
+  volatile float re1 = 0
+  volatile float re2 = 0
+  volatile float re3 = 0
+  volatile float ry1 = 0
+  volatile float ry2 = 0
+  volatile float ry3 = 0
+
+  volatile float le1 = 0
+  volatile float le2 = 0
+  volatile float le3 = 0
+  volatile float ly1 = 0
+  volatile float ly2 = 0
+  volatile float ly3 = 0
+
+  //RIGHT motor input voltage: IN1 = HIGH IN2 = LOW to go forward
   const int IN1 = 8; 
   const int IN2 = 9;
-  const int ENA = ;  //PWM of right motor
-
-  //left motor input voltage
+  const int ENA = 10;
+  //LEFT motor input voltage
   const int IN3 = 12; 
   const int IN4 = 13; 
-  const int ENB = 10; //PWM of left motor
+  const int ENB = 11; //PWM of left motor
 
 void setup() {
   //set the pins as output and input
@@ -71,12 +95,49 @@ void setup() {
   pinMode(IN4, OUTPUT);
   pinMode(ENB, OUTPUT);
   //pinMode(irPin, INPUT);
-
-  attachInterrupt(digitalPinToInterrupt(interruptPin), blink, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(interruptPin), blink, CHANGE);
+  //define the encoders interruption attachinterrupt(interruptPin,functionCalled, rising/falling/change) 
+  attachInterrupt(digitalPinToInterrupt(rightEncoder), rightEncoderIncrease, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(leftEncoder), leftEncoderIncrease, CHANGE);
 }
 
+//Encoder functions triggered every time a rising or falling edge caused by the rotation changes, used to calculate speed, speed=(n*pulses)/time
+void rightEncoderIncrease(){
+  rightPulses += 1;
+}
 
+void leftEncoderIncrease(){
+  leftPulses += 1;
+}
+
+void controlRightWheel(){
+  //each pulse is equal to 9 degrees of displacement fo the wheel 360/40=9 for rising and falling detection. have to pass it to rad/s
+  ry = rightPulses*3.141592/20
+  ry = (3.47*ry)/sampling_time //radius in cm
+  re = ru - ry
+  ry = re*1 + re1*1 + re2*1 + re3*1 + ry1*1 + ry2*1 + ry3*1
+  re3 = re2
+  re2 = re1
+  re1 = re
+  ry3 = ry2
+  ry2 = ry1
+  ry1 = ry
+
+  
+  datawrite(ENA,)
+}
+
+void controlLeftWheel(){
+  //each pulse is equal to 9 degrees of displacement fo the wheel 360/40=9 for rising and falling detection. have to pass it to rad/s
+  ly = leftPulses*3.141592/20
+  le = lu - ly
+  y = le*1 + le1*1 + le2*1 + le3*1 + ly1*1 + ly2*1 + ly3*1
+  le3 = le2
+  le2 = le1
+  le1 = le
+  ly3 = ly2
+  ly2 = ly1
+  ly1 = ly
+}
 
 void loop() {
   int encoder1()
