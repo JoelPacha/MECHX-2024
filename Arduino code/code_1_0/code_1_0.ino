@@ -27,7 +27,7 @@
 //                   \_______________________/ 
 
 // use delayMicroseconds() instead of millis() as interruptions are used for the encoders
-// Encoders
+// Encoders pins and variables
   const int rightEncoder = 2;
   const int leftEncoder = 3;
   volatile int rightPulses = 0;
@@ -108,7 +108,9 @@ void rightEncoderIncrease(){
 void leftEncoderIncrease(){
   leftPulses += 1;
 }
-
+void inversekinematics(){
+  
+}
 void controlRightWheel(){
   //each pulse is equal to 9 degrees of displacement fo the wheel 360/40=9 for rising and falling detection. have to pass it to rad/s
   ry = rightPulses*3.141592/20
