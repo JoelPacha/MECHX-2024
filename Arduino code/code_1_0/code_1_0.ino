@@ -25,68 +25,230 @@
 //                  |            [ ] [ ] [ ]              |
 //                  |  UNO_R3    GND MOSI 5V  ____________/
 //                   \_______________________/ 
+//
 
-// use delayMicroseconds() instead of millis() as interruptions are used for the encoders
-// Encoders pins and variables
-  const int rightEncoder = 2;
-  const int leftEncoder = 3;
-  volatile int rightPulses = 0;
-  volatile int leftPulses = 0;
+//pins for encoders
+#define CLK_PIN1 2
+#define CLK_PIN2 3 
+
+//pins for motor voltage
+#define ENA 10 //right motor input voltage IN1 = HIGH IN2 = LOW to go forward
+#define IN1 8
+#define IN2 9
+#define ENB 11
+#define IN3 12
+#define IN4 13
+
+//globals for loop control
+#define DIRECTION_CW 0   // clockwise direction
+#define DIRECTION_CCW 1  // counter-clockwise direction
+#define KP 11     //1.03/(2*0.135 )
+#define PI 3.14159265358979323846
+#define E 0.135
+#define RAYON 0.041
+
+//variables used in the interrupts should be "volatile" type to avoid unexpected behavior
+volatile int rotatingCounter = 0;
+volatile int numberOfRotations1 = 0; 
+volatile int numberOfRotations2 = 0; 
+volatile int direction = DIRECTION_CW;
+volatile unsigned long lastTime;  // for debouncing
+int prevCounter ;
+//dutycycles of PWM signals 
+int dcA = 0; 
+int dcB = 0; 
+
 // ultrasonic sensors output and input 
-  const int triggerPin1 = 2;
-  const int echoPin1 = 0; 
-  const int triggerPin2 = 4;
-  const int echoPin2 = 1; 
-  const int triggerPin3 = 7;
-  const int echoPin3 = 2;
-  //int irpin =2;   infrarated sensor for stairs
+const int triggerPin1 = 2;
+const int echoPin1 = 0; 
+const int triggerPin2 = 4;
+const int echoPin2 = 1; 
+const int triggerPin3 = 7;
+const int echoPin3 = 2;
+const int triggerPin4 = 7;
+const int echoPin4 = 2;
 
-  //robot geometric constants
-  r = //radius of the wheel
-  l = //distance from the center of mass to the wheels
+//timevariables for each sensors measuring the time the sound signal takes to come back
+//sensor 1 is left, 2 is front, 3 is right
+long sensorTime1;
+long sensorTime2;
+long sensorTime3;
+long sensorTime4; 
 
-  //timevariables for each sensors measuring the time the signal takes to come back
-  //sensor 1 is left, 2 is front, 3 is right
-  long sensorTime1;
-  long sensorTime2;
-  long sensorTime3;
-  int distanceLeft;
-  int distanceFront;
-  int distanceRight;
-  int a=0;
+int distanceLeft;
+int distanceFront;
+int distanceRight;
+int distanceBelow; 
+int a=0;
 
-  //controller variables
-  volatile float re1 = 0
-  volatile float re2 = 0
-  volatile float re3 = 0
-  volatile float ry1 = 0
-  volatile float ry2 = 0
-  volatile float ry3 = 0
+//variables for loop control
+float Kp = 0; 
+float totalAngle = 90;  
+float distanceTotal = 0 ;
 
-  volatile float le1 = 0
-  volatile float le2 = 0
-  volatile float le3 = 0
-  volatile float ly1 = 0
-  volatile float ly2 = 0
-  volatile float ly3 = 0
+float distanceAccel = 0.25;             //const because acc= 1
+float distanceDecel = 0.25; 
+float distanceContinuous = 0;         //const because decc= -1
 
-  //RIGHT motor input voltage: IN1 = HIGH IN2 = LOW to go forward
-  const int IN1 = 8; 
-  const int IN2 = 9;
-  const int ENA = 10;
-  //LEFT motor input voltage
-  const int IN3 = 12; 
-  const int IN4 = 13; 
-  const int ENB = 11; //PWM of left motor
+float accelTime = 1 ; 
+float decelTime = 1;
+float continuousTime = 0; 
+float totalTime = 0; 
+
+float t = 0; 
+float ref = 0; 
+float tolerance = 0.01; 
+
+float numberOfRotations1 = 0; 
+float numberOfRotations2 = 0; 
+
+float pos1 = 0; 
+float pos2 = 0; 
+float pos1Degree = 0;
+float pos2Degree = 0; 
+
+float error1 = 0; 
+float error2= 0;
+float errorTotal1 = 0; 
+float errorTotal2 = 0;
+
+void calcul(
+  float* Kp, float* continuousTime, float* accelTime, float* decelTime, float* totalTime,
+  float* distanceContinuous, float* distanceAccel, float* distanceDecel, float* distanceTotal){
+
+  *distanceTotal = totalAngle * PI/180 * E/2;
+  *Kp = KP;
+  if(*distanceTotal>0.5){
+  *distanceContinuous = *distanceTotal - *distanceAccel - *distanceDecel; 
+  *continuousTime = *distanceContinuous/0.5; 
+  *totalTime = *accelTime + *decelTime + *continuousTime;
+  }
+  else{
+  *distanceContinuous = 0; 
+  *continuousTime = 0; 
+  *distanceAccel = *distanceTotal/2;
+  *distanceDecel = *distanceTotal/2;
+  *accelTime  = sqrt(2 * *distanceAccel/0.5); //acceleration of motors is 0.5 s/m^2
+  *decelTime = sqrt(2 * *distanceDecel/(0.5)); 
+  *totalTime = *accelTime + *decelTime ;
+  }
+}
+
+//calculates the distances in meters done by prototype
+void calculate_pos1(){
+    float pos1_degree = nb_tours1*360 + (POS1CNT+1)/4;      //POSCNT from 0 to 1439 because 4x360 mode 
+    pos1 = pos1_degree*2*PI/360*RAYON;                   // 0.041 radius of the wheels 
+}
+
+void calculate_pos2(){
+    pos2_degree = nb_tours2*360 + (POS2CNT+1)/4;
+    pos2 = pos2_degree*2*PI/360*RAYON;
+}
+
+
+void reguler(float csg){
+    calculate_pos1(); 
+    calculate_pos2(); 
+    
+    error1 = csg-pos1; 
+    error2 = csg-pos2;  
+    dc1 = Kp * error1; 
+    dc2 = Kp * error2; 
+    
+}
+
+//defines the input signal
+void accel(){
+    csg = 0.5*pow(t,2)/2;  ///2.5000e-07
+    reguler(csg);  
+}
+
+void continu(){
+    float t_continue = t-duree_accel; 
+    csg = 0.5*t_continue + distance_accel; 
+    reguler(csg); 
+}
+
+void deccel(){
+    float t_deccel = t-duree_accel-duree_continue; 
+    if (distance_totale<=0.5){
+        csg = -0.5*pow(t_deccel,2)/2 + distance_accel + (0.5*duree_accel)*t_deccel; 
+        reguler(csg);
+    }
+    else{
+        csg = -0.5*pow(t_deccel,2)/2 + distance_accel + distance_continue + 0.5*t_deccel; 
+        reguler(csg);
+    }
+     
+}
+
+void arrete(){
+    //dc1 = 0; 
+    //dc2 = 0; 
+     /*for (int i = 0; i < 10; i++) { /// Remise à 0 de data
+      donne[i] = 0 ;      
+     }   
+      param = 0 ;
+      order = 0 ;
+      compteur = 0 ;*/ 
+    calculate_pos1(); 
+    calculate_pos2(); 
+    csg = distance_totale; 
+    error1 = csg-pos1; 
+    error2 = csg-pos2;  
+    dc1 = Kp * error1; 
+    dc2 = Kp * error2; 
+}
+
+
+
+void __attribute__((__interrupt__, no_auto_psv)) _T1Interrupt(void)
+{
+t = t+0.001; 
+error_totale1 = distance_totale-pos1; 
+error_totale2 = distance_totale-pos2; 
+if ( (error_totale1 > seuil) || (error_totale2 > seuil) ){
+    if (t<duree_accel && t>0){
+       accel();
+    }
+    else if(t<duree_continue + duree_accel){
+      continu(); 
+    }
+
+    else if(t>duree_accel +duree_continue){
+        deccel(); 
+    }
+}
+else{
+    
+    arrete(); 
+    
+}
+IFS0bits.T1IF = 0; // Clear Timer1 Interrupt Flag
+}
+
 
 void setup() {
-  //set the pins as output and input
+
+  Serial.begin(9600);
+
+  // configure encoder pins as inputs
+  pinMode(CLK_PIN, INPUT);
+  pinMode(DT_PIN, INPUT);
+
+  // use interrupt for CLK pin is enough
+  // call ISR_encoderChange() when CLK pin changes from LOW to HIGH
+  attachInterrupt(digitalPinToInterrupt(CLK_PIN), ISR_encoder, RISING);
+
+  //set the sensors' pins as output and input
   pinMode(triggerPin1, OUTPUT);
   pinMode(triggerPin2, OUTPUT);
   pinMode(triggerPin3, OUTPUT);
+  pinMode(triggerPin4, OUTPUT); 
   pinMode(echoPin1, INPUT); 
   pinMode(echoPin2, INPUT);
   pinMode(echoPin3, INPUT);
+  pinMode(echoPin4, INPUT); 
 
   pinMode(IN1, OUTPUT); 
   pinMode(IN2, OUTPUT);
@@ -94,56 +256,30 @@ void setup() {
   pinMode(IN3, OUTPUT);
   pinMode(IN4, OUTPUT);
   pinMode(ENB, OUTPUT);
-  //pinMode(irPin, INPUT);
-  //define the encoders interruption attachinterrupt(interruptPin,functionCalled, rising/falling/change) 
-  attachInterrupt(digitalPinToInterrupt(rightEncoder), rightEncoderIncrease, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(leftEncoder), leftEncoderIncrease, CHANGE);
 }
 
-//Encoder functions triggered every time a rising or falling edge caused by the rotation changes, used to calculate speed, speed=(n*pulses)/time
-void rightEncoderIncrease(){
-  rightPulses += 1;
+void turn_right(){
+  //right wheel goes backward 
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, HIGH);
+  //left wheel goes forward
+  digitalWrite(IN3, HIGH);
+  digitalWrite(IN4, LOW);
 }
 
-void leftEncoderIncrease(){
-  leftPulses += 1;
-}
-void inversekinematics(){
-  
-}
-void controlRightWheel(){
-  //each pulse is equal to 9 degrees of displacement fo the wheel 360/40=9 for rising and falling detection. have to pass it to rad/s
-  ry = rightPulses*3.141592/20
-  ry = (3.47*ry)/sampling_time //radius in cm
-  re = ru - ry
-  ry = re*1 + re1*1 + re2*1 + re3*1 + ry1*1 + ry2*1 + ry3*1
-  re3 = re2
-  re2 = re1
-  re1 = re
-  ry3 = ry2
-  ry2 = ry1
-  ry1 = ry
-
-  
-  datawrite(ENA,)
+void turn_left(){
+  //right wheel goes forward 
+  digitalWrite(IN1, HIGH);
+  digitalWrite(IN2, LOW);
+  //left wheel goes  backward
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, HIGH);
 }
 
-void controlLeftWheel(){
-  //each pulse is equal to 9 degrees of displacement fo the wheel 360/40=9 for rising and falling detection. have to pass it to rad/s
-  ly = leftPulses*3.141592/20
-  le = lu - ly
-  y = le*1 + le1*1 + le2*1 + le3*1 + ly1*1 + ly2*1 + ly3*1
-  le3 = le2
-  le2 = le1
-  le1 = le
-  ly3 = ly2
-  ly2 = ly1
-  ly1 = ly
-}
 
-void loop() {
-  int encoder1()
-  //continuously checks the sensors for obstacle
+void move() {
+
+  //1. continuously checks the sensors for obstacle
 
   //sensor1 
   digitalWrite(triggerPin1, LOW);    //first restart the trigger pin
@@ -160,7 +296,7 @@ void loop() {
   digitalWrite(triggerPin2, HIGH);   
   delayMicroseconds(10);             //sends the ultrasonic wave during 10µs
   digitalWrite(triggerPin2, LOW);
-  sensorTime1 = pulseIn(echoPin2, HIGH);
+  sensorTime2 = pulseIn(echoPin2, HIGH);
   distanceFront = sensorTime2 * 0.034 / 2;
 
   //sensor3
@@ -169,39 +305,80 @@ void loop() {
   digitalWrite(triggerPin3, HIGH);   
   delayMicroseconds(10);             //sends the ultrasonic wave during 10µs
   digitalWrite(triggerPin3, LOW);
-  sensorTime1 = pulseIn(echoPin3, HIGH);
+  sensorTime3 = pulseIn(echoPin3, HIGH);
   distanceRight = sensorTime3 * 0.034 / 2;
 
+   //sensor4
+  digitalWrite(triggerPin4, LOW);    //first restart the trigger pin
+  delayMicroseconds(2);              //wait of 2µs
+  digitalWrite(triggerPin4, HIGH);   
+  delayMicroseconds(10);             //sends the ultrasonic wave during 10µs
+  digitalWrite(triggerPin4, LOW);
+  sensorTime4 = pulseIn(echoPin4, HIGH);
+  distanceBelow = sensorTime4 * 0.034 / 2;
+
   //wheels go forward
-  digitalWrite(IN1, LOW);
-  digitalWrite(IN2, HIGH);
-  digitalWrite(IN3, LOW);
-  digitalWrite(IN4, HIGH);
+  digitalWrite(IN1, HIGH);
+  digitalWrite(IN2, LOW);
+  digitalWrite(IN3, HIGH);
+  digitalWrite(IN4, LOW);
   delay(1000);
 
   if (distanceFront <= 15 ){
     //if obstacle is on the left and front turn right
     if (distanceLeft <= 15 && distanceRight > 15){
-      digitalWrite(IN1, HIGH);
-      digitalWrite(IN2, LOW);
-      digitalWrite(IN3, LOW);
-      digitalWrite(IN4, HIGH);
-      delay(1000);
+      turn_right(); 
     }
     //if obstacle is on the right and front turn left
     else if (distanceLeft > 15 && distanceRight <= 15){
-      digitalWrite(IN1, LOW);
-      digitalWrite(IN2, HIGH);
-      digitalWrite(IN3, HIGH);
-      digitalWrite(IN4, LOW);
-      delay(1000);
-    }
-    else if (distanceLeft <= 15 && distanceRight <= 15){
-      digitalWrite(IN1, HIGH);
-      digitalWrite(IN2, LOW);
-      digitalWrite(IN3, HIGH);
-      digitalWrite(IN4, LOW);
-      delay(1000);
+      turn_left(); 
     }
   }
 }
+
+
+void loop() {
+  
+ 
+    Serial.print("DIRECTION: ");
+    if (direction == DIRECTION_CW)
+      Serial.print("Clockwise");
+    else
+      Serial.print("Counter-clockwise");
+
+    Serial.print(" | COUNTER: ");
+    Serial.println(rotatingCounter);
+  move(); 
+}
+
+void ISR_encoder() {
+  if (digitalRead(DT_PIN) == HIGH) {
+    //encoder is rotating counter-clockwise because B high before A:decrease the counter
+    rotatingCounter--;
+    direction = DIRECTION_CCW;
+    
+  } else {
+    //encoder is rotating clockwise: increase the counter
+    rotatingCounter++;
+    direction = DIRECTION_CW;
+  }
+  if(rotatingCounter == 1440){
+    numberOfRotations = numberOfRotations + 1; 
+  }
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
