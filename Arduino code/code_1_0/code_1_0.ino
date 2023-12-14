@@ -28,8 +28,8 @@
 //
 
 //pins for encoders
-#define CLK_PIN1 2
-#define CLK_PIN2 3 
+#define CLK_PINA 2
+#define CLK_PINB 3 
 
 //pins for motor voltage
 #define ENA 10 //right motor input voltage IN1 = HIGH IN2 = LOW to go forward
@@ -45,13 +45,14 @@
 #define KP 11     //1.03/(2*0.135 )
 #define PI 3.14159265358979323846
 #define E 0.135
-#define RAYON 0.041
+#define RADIUS 0.041
 
 //variables used in the interrupts should be "volatile" type to avoid unexpected behavior
-volatile int rotatingCounter = 0;
-volatile int numberOfRotations1 = 0; 
-volatile int numberOfRotations2 = 0; 
-volatile int direction = DIRECTION_CW;
+volatile int rotatingCounterA = 0;
+volatile int rotatingCounterB = 0; 
+volatile int numberOfRotationsA = 0; 
+volatile int numberOfRotationsB = 0; 
+volatile int directionA = DIRECTION_CW;
 volatile unsigned long lastTime;  // for debouncing
 int prevCounter ;
 //dutycycles of PWM signals 
@@ -99,18 +100,15 @@ float t = 0;
 float ref = 0; 
 float tolerance = 0.01; 
 
-float numberOfRotations1 = 0; 
-float numberOfRotations2 = 0; 
+float posA = 0; 
+float posB = 0; 
+float posADegree = 0;
+float posBDegree = 0; 
 
-float pos1 = 0; 
-float pos2 = 0; 
-float pos1Degree = 0;
-float pos2Degree = 0; 
-
-float error1 = 0; 
-float error2= 0;
-float errorTotal1 = 0; 
-float errorTotal2 = 0;
+float errorA = 0; 
+float errorB = 0;
+float errorTotalA = 0; 
+float errorTotalB = 0;
 
 void calcul(
   float* Kp, float* continuousTime, float* accelTime, float* decelTime, float* totalTime,
@@ -136,8 +134,8 @@ void calcul(
 
 //calculates the distances in meters done by prototype
 void calculate_pos1(){
-    float pos1_degree = nb_tours1*360 + (POS1CNT+1)/4;      //POSCNT from 0 to 1439 because 4x360 mode 
-    pos1 = pos1_degree*2*PI/360*RAYON;                   // 0.041 radius of the wheels 
+    float posADegree = numberOfRotationsA*360 + (rotatingCounterA+1)/4;      //POSCNT from 0 to 1439 because 4x360 mode 
+    posA = posADegree*2*PI/360*RADIUS;                   // 0.041 radius of the wheels 
 }
 
 void calculate_pos2(){
@@ -150,29 +148,29 @@ void reguler(float csg){
     calculate_pos1(); 
     calculate_pos2(); 
     
-    error1 = csg-pos1; 
-    error2 = csg-pos2;  
-    dc1 = Kp * error1; 
-    dc2 = Kp * error2; 
+    error1 = csg-posA; 
+    error2 = csg-posB;  
+    dcA = Kp * errorA; 
+    dcB = Kp * errorB; 
     
 }
 
 //defines the input signal
 void accel(){
     csg = 0.5*pow(t,2)/2;  ///2.5000e-07
-    reguler(csg);  
+    reguler(ref);  
 }
 
 void continu(){
-    float t_continue = t-duree_accel; 
-    csg = 0.5*t_continue + distance_accel; 
-    reguler(csg); 
+    float t_continuous = t-accelTime; 
+    ref = 0.5*t_continuous + distance_accel; 
+    reguler(ref); 
 }
 
 void deccel(){
-    float t_deccel = t-duree_accel-duree_continue; 
-    if (distance_totale<=0.5){
-        csg = -0.5*pow(t_deccel,2)/2 + distance_accel + (0.5*duree_accel)*t_deccel; 
+    float t_decel = t-accelTime-continousTime; 
+    if (distanceTotal<=0.5){
+        csg = -0.5*pow(t_deccel,2)/2 + distanceAccel + (0.5*duree_accel)*t_deccel; 
         reguler(csg);
     }
     else{
@@ -352,16 +350,16 @@ void loop() {
 }
 
 void ISR_encoder() {
-  if (digitalRead(DT_PIN) == HIGH) {
-    //encoder is rotating counter-clockwise because B high before A:decrease the counter
-    rotatingCounter--;
-    direction = DIRECTION_CCW;
+  
+  //encoder is rotating counter-clockwise because B high before A:decrease the counter
+  rotatingCounter--;
+  direction = DIRECTION_CCW;
     
-  } else {
-    //encoder is rotating clockwise: increase the counter
+  //encoder is rotating clockwise: increase the counter
     rotatingCounter++;
     direction = DIRECTION_CW;
-  }
+    
+  
   if(rotatingCounter == 1440){
     numberOfRotations = numberOfRotations + 1; 
   }
