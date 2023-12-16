@@ -53,21 +53,22 @@ volatile int rotatingCounterB = 0;
 volatile int numberOfRotationsA = 0; 
 volatile int numberOfRotationsB = 0; 
 volatile int directionA = DIRECTION_CW;
-volatile unsigned long lastTime;  // for debouncing
-int prevCounter ;
+volatile int directionB = DIRECTION_CW; 
+const int numberOfHoles = 20; 
+
 //dutycycles of PWM signals 
 int dcA = 0; 
 int dcB = 0; 
 
-// ultrasonic sensors output and input 
+//ultrasonic sensors output and input 
 const int triggerPin1 = 2;
 const int echoPin1 = 0; 
 const int triggerPin2 = 4;
 const int echoPin2 = 1; 
 const int triggerPin3 = 7;
 const int echoPin3 = 2;
-const int triggerPin4 = 7;
-const int echoPin4 = 2;
+const int triggerPin4 = 19;
+const int echoPin4 = 18;
 
 //timevariables for each sensors measuring the time the sound signal takes to come back
 //sensor 1 is left, 2 is front, 3 is right
@@ -76,167 +77,192 @@ long sensorTime2;
 long sensorTime3;
 long sensorTime4; 
 
+//distances between sensors and obstacles
 int distanceLeft;
 int distanceFront;
 int distanceRight;
 int distanceBelow; 
 int a=0;
 
-//variables for loop control
+////////////////////////variables for loop control
 float Kp = 0; 
 float totalAngle = 90;  
 float distanceTotal = 0 ;
 
+//length of the rotation displacement spend in acceleration, continous speed and deceleration of motors
 float distanceAccel = 0.25;             //const because acc= 1
-float distanceDecel = 0.25; 
-float distanceContinuous = 0;         //const because decc= -1
+float distanceDecel = 0.25;             //const because dec= -1
+float distanceContinuous = 0;         
 
+//time spent in each phase
 float accelTime = 1 ; 
 float decelTime = 1;
 float continuousTime = 0; 
 float totalTime = 0; 
 
 float t = 0; 
+float t_continuous = 0; 
+float t_decel = 0; 
 float ref = 0; 
 float tolerance = 0.01; 
 
+//positions on the wheels in m and degrees
 float posA = 0; 
 float posB = 0; 
 float posADegree = 0;
 float posBDegree = 0; 
 
+//errors on the position towards the ref and the total distance
 float errorA = 0; 
 float errorB = 0;
 float errorTotalA = 0; 
 float errorTotalB = 0;
 
-void calcul(
-  float* Kp, float* continuousTime, float* accelTime, float* decelTime, float* totalTime,
-  float* distanceContinuous, float* distanceAccel, float* distanceDecel, float* distanceTotal){
+bool stopRotation = 1; 
 
-  *distanceTotal = totalAngle * PI/180 * E/2;
-  *Kp = KP;
-  if(*distanceTotal>0.5){
-  *distanceContinuous = *distanceTotal - *distanceAccel - *distanceDecel; 
-  *continuousTime = *distanceContinuous/0.5; 
-  *totalTime = *accelTime + *decelTime + *continuousTime;
+void calcul(){
+  distanceTotal = totalAngle * PI/180 * E/2;
+  Kp = KP;
+  if(distanceTotal>0.5){
+  distanceContinuous = distanceTotal - distanceAccel - distanceDecel; 
+  continuousTime = distanceContinuous/0.5; 
+  totalTime = accelTime + decelTime + continuousTime;
   }
   else{
-  *distanceContinuous = 0; 
-  *continuousTime = 0; 
-  *distanceAccel = *distanceTotal/2;
-  *distanceDecel = *distanceTotal/2;
-  *accelTime  = sqrt(2 * *distanceAccel/0.5); //acceleration of motors is 0.5 s/m^2
-  *decelTime = sqrt(2 * *distanceDecel/(0.5)); 
-  *totalTime = *accelTime + *decelTime ;
+  distanceContinuous = 0; 
+  continuousTime = 0; 
+  distanceAccel = distanceTotal/2;
+  distanceDecel = distanceTotal/2;
+  accelTime  = sqrt(2 * distanceAccel/0.5); //acceleration of motors is 0.5 s/m^2
+  decelTime = sqrt(2 * distanceDecel/(0.5)); 
+  totalTime = accelTime + decelTime ;
   }
 }
 
 //calculates the distances in meters done by prototype
-void calculate_pos1(){
-    float posADegree = numberOfRotationsA*360 + (rotatingCounterA+1)/4;      //POSCNT from 0 to 1439 because 4x360 mode 
-    posA = posADegree*2*PI/360*RADIUS;                   // 0.041 radius of the wheels 
+void calculate_posA(){
+    posADegree = numberOfRotationsA*360 + rotatingCounterA+1;      
+    posA = posADegree*2*PI/360*RADIUS;                    
 }
 
-void calculate_pos2(){
-    pos2_degree = nb_tours2*360 + (POS2CNT+1)/4;
-    pos2 = pos2_degree*2*PI/360*RAYON;
+void calculate_posB(){
+    posBDegree = numberOfRotationsB*360 + rotatingCounterB+1;
+    posB = posBDegree*2*PI/360*RADIUS;
 }
 
 
-void reguler(float csg){
-    calculate_pos1(); 
-    calculate_pos2(); 
+void regulate(float ref){
+    calculate_posA(); 
+    calculate_posB(); 
     
-    error1 = csg-posA; 
-    error2 = csg-posB;  
+    errorA = ref-posA; 
+    errorB = ref-posB;  
     dcA = Kp * errorA; 
     dcB = Kp * errorB; 
-    
 }
 
 //defines the input signal
 void accel(){
-    csg = 0.5*pow(t,2)/2;  ///2.5000e-07
-    reguler(ref);  
+    ref = 0.5*pow(t,2)/2;  ///2.5000e-07
+    regulate(ref);  
 }
 
-void continu(){
-    float t_continuous = t-accelTime; 
-    ref = 0.5*t_continuous + distance_accel; 
-    reguler(ref); 
+void continuous(){
+    t_continuous = t-accelTime; 
+    ref = 0.5*t_continuous + distanceAccel; 
+    regulate(ref); 
 }
 
-void deccel(){
-    float t_decel = t-accelTime-continousTime; 
-    if (distanceTotal<=0.5){
-        csg = -0.5*pow(t_deccel,2)/2 + distanceAccel + (0.5*duree_accel)*t_deccel; 
-        reguler(csg);
+void decel(){
+    t_decel = t-accelTime-continuousTime; 
+    ref = -0.5*pow(t_decel,2)/2 + distanceAccel + distanceContinuous + (0.5*accelTime)*t_decel; 
+    regulate(ref);
+}
+
+void stop(){
+    /*calculate_posA(); 
+    calculate_posB(); 
+    ref = distanceTotal; 
+    errorA = ref-posA; 
+    errorA = ref-posB;  
+    dcA = Kp * errorA; 
+    dcB = Kp * errorB; */
+    stopRotation = 1; 
+    dcA = 0.5; 
+    dcB = 0.5; 
+}
+
+void sample_time(){
+  while(!stopRotation){
+    t = t+0.001; 
+    errorTotalA = distanceTotal-posA; 
+    errorTotalB = distanceTotal-posB;
+    if ( (errorTotalA > tolerance) || (errorTotalB > tolerance) ){
+        if (t<accelTime && t>0){
+          accel();
+        }
+        else if(t<continuousTime+ accelTime){
+          continuous(); 
+        }
+        else if(t>accelTime +continuousTime){
+          decel(); 
+        }
+        analogWrite(ENA, dcA*255); 
+        analogWrite(ENB, dcB*255); 
     }
     else{
-        csg = -0.5*pow(t_deccel,2)/2 + distance_accel + distance_continue + 0.5*t_deccel; 
-        reguler(csg);
+        stop(); 
     }
-     
-}
-
-void arrete(){
-    //dc1 = 0; 
-    //dc2 = 0; 
-     /*for (int i = 0; i < 10; i++) { /// Remise à 0 de data
-      donne[i] = 0 ;      
-     }   
-      param = 0 ;
-      order = 0 ;
-      compteur = 0 ;*/ 
-    calculate_pos1(); 
-    calculate_pos2(); 
-    csg = distance_totale; 
-    error1 = csg-pos1; 
-    error2 = csg-pos2;  
-    dc1 = Kp * error1; 
-    dc2 = Kp * error2; 
+    delay(1); 
+  }
 }
 
 
-
-void __attribute__((__interrupt__, no_auto_psv)) _T1Interrupt(void)
-{
-t = t+0.001; 
-error_totale1 = distance_totale-pos1; 
-error_totale2 = distance_totale-pos2; 
-if ( (error_totale1 > seuil) || (error_totale2 > seuil) ){
-    if (t<duree_accel && t>0){
-       accel();
-    }
-    else if(t<duree_continue + duree_accel){
-      continu(); 
-    }
-
-    else if(t>duree_accel +duree_continue){
-        deccel(); 
-    }
-}
-else{
-    
-    arrete(); 
-    
-}
-IFS0bits.T1IF = 0; // Clear Timer1 Interrupt Flag
+//interrupt functions called on rising edge of pin 2 and 3 (each time a hole passes in front of the encoder)
+void ISR_encoderA() {
+  if(directionA == DIRECTION_CW){
+    rotatingCounterA++;
+  }
+  else{
+    rotatingCounterA--;
+  }     
+  if(rotatingCounterA == numberOfHoles){
+    numberOfRotationsA = numberOfRotationsA + 1; 
+  }
 }
 
+void ISR_encoderB() {
+  if(directionB == DIRECTION_CW){
+    rotatingCounterB++;
+  }
+  else{
+    rotatingCounterB--;
+  }     
+  if(rotatingCounterB == numberOfHoles){
+    numberOfRotationsB = numberOfRotationsB + 1; 
+  }
+}
+
+
+
+
+
+////////////////////////////////////////////////////////////////
 
 void setup() {
 
   Serial.begin(9600);
 
   // configure encoder pins as inputs
-  pinMode(CLK_PIN, INPUT);
-  pinMode(DT_PIN, INPUT);
+  pinMode(CLK_PINA, INPUT);
+  pinMode(CLK_PINB, INPUT);
 
   // use interrupt for CLK pin is enough
   // call ISR_encoderChange() when CLK pin changes from LOW to HIGH
-  attachInterrupt(digitalPinToInterrupt(CLK_PIN), ISR_encoder, RISING);
+  attachInterrupt(digitalPinToInterrupt(CLK_PINA), ISR_encoderA, RISING);
+  attachInterrupt(digitalPinToInterrupt(CLK_PINB), ISR_encoderB, RISING);
+  /////putting the change of directions 
+
 
   //set the sensors' pins as output and input
   pinMode(triggerPin1, OUTPUT);
@@ -254,28 +280,41 @@ void setup() {
   pinMode(IN3, OUTPUT);
   pinMode(IN4, OUTPUT);
   pinMode(ENB, OUTPUT);
+
+  calcul(); 
+
 }
 
 void turn_right(){
+  directionA = DIRECTION_CCW; 
+  directionB = DIRECTION_CW;            //clock wise = forward      
+  stopRotation = 0; 
   //right wheel goes backward 
   digitalWrite(IN1, LOW);
   digitalWrite(IN2, HIGH);
   //left wheel goes forward
   digitalWrite(IN3, HIGH);
   digitalWrite(IN4, LOW);
+  sample_time(); 
 }
 
 void turn_left(){
+  directionA = DIRECTION_CW; 
+  directionB = DIRECTION_CCW; 
+  stopRotation = 0; 
   //right wheel goes forward 
   digitalWrite(IN1, HIGH);
   digitalWrite(IN2, LOW);
   //left wheel goes  backward
   digitalWrite(IN3, LOW);
   digitalWrite(IN4, HIGH);
+  sample_time(); 
 }
 
 
-void move() {
+
+
+void check_sensors() {
 
   //1. continuously checks the sensors for obstacle
 
@@ -315,14 +354,8 @@ void move() {
   sensorTime4 = pulseIn(echoPin4, HIGH);
   distanceBelow = sensorTime4 * 0.034 / 2;
 
-  //wheels go forward
-  digitalWrite(IN1, HIGH);
-  digitalWrite(IN2, LOW);
-  digitalWrite(IN3, HIGH);
-  digitalWrite(IN4, LOW);
-  delay(1000);
-
   if (distanceFront <= 15 ){
+    //obstacle in front: we're gonna start spinning
     //if obstacle is on the left and front turn right
     if (distanceLeft <= 15 && distanceRight > 15){
       turn_right(); 
@@ -332,38 +365,31 @@ void move() {
       turn_left(); 
     }
   }
+  else{
+    //wheels go forward
+    dcA = 0.5; 
+    dcA = 0.5; 
+    digitalWrite(IN1, HIGH);
+    digitalWrite(IN2, LOW);
+    digitalWrite(IN3, HIGH);
+    digitalWrite(IN4, LOW);
+    analogWrite(ENA, dcA*255); 
+    analogWrite(ENB, dcB*255); 
+  }
 }
 
 
 void loop() {
-  
- 
     Serial.print("DIRECTION: ");
-    if (direction == DIRECTION_CW)
+    if (directionA == DIRECTION_CW)
       Serial.print("Clockwise");
     else
       Serial.print("Counter-clockwise");
 
     Serial.print(" | COUNTER: ");
-    Serial.println(rotatingCounter);
-  move(); 
-}
-
-void ISR_encoder() {
-  
-  //encoder is rotating counter-clockwise because B high before A:decrease the counter
-  rotatingCounter--;
-  direction = DIRECTION_CCW;
+    Serial.println(rotatingCounterA);
     
-  //encoder is rotating clockwise: increase the counter
-    rotatingCounter++;
-    direction = DIRECTION_CW;
-    
-  
-  if(rotatingCounter == 1440){
-    numberOfRotations = numberOfRotations + 1; 
-  }
-
+    check_sensors(); 
 }
 
 
