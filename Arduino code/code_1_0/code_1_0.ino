@@ -44,8 +44,8 @@
 #define DIRECTION_CCW 1  // counter-clockwise direction
 #define KP 11     //1.03/(2*0.135 )
 #define PI 3.14159265358979323846
-#define E 0.135
-#define RADIUS 0.041
+#define E 0.175
+#define RADIUS 0.038
 
 //variables used in the interrupts should be "volatile" type to avoid unexpected behavior
 volatile int rotatingCounterA = 0;
@@ -71,7 +71,7 @@ const int triggerPin4 = 19;
 const int echoPin4 = 18;
 
 //timevariables for each sensors measuring the time the sound signal takes to come back
-//sensor 1 is left, 2 is front, 3 is right
+//sensor 1 is left, 2 is below, 3 is right, 4 is front
 long sensorTime1;
 long sensorTime2;
 long sensorTime3;
@@ -82,12 +82,11 @@ int distanceLeft;
 int distanceFront;
 int distanceRight;
 int distanceBelow; 
-int a=0;
-
+int minimalDistance = 20; 
 ////////////////////////variables for loop control
 float Kp = 0; 
 float totalAngle = 90;  
-float distanceTotal = 0 ;
+float distanceTotal = 0; 
 
 //length of the rotation displacement spend in acceleration, continous speed and deceleration of motors
 float distanceAccel = 0.25;             //const because acc= 1
@@ -141,7 +140,7 @@ void calcul(){
 
 //calculates the distances in meters done by prototype
 void calculate_posA(){
-    posADegree = numberOfRotationsA*360 + rotatingCounterA+1;      
+    posADegree = numberOfRotationsA*360 + (rotatingCounterA+1)/1440;      
     posA = posADegree*2*PI/360*RADIUS;                    
 }
 
@@ -201,12 +200,14 @@ void sample_time(){
         if (t<accelTime && t>0){
           accel();
         }
-        else if(t<continuousTime+ accelTime){
+        else if(t<(continuousTime+ accelTime)){
           continuous(); 
         }
-        else if(t>accelTime +continuousTime){
+        else if(t>(accelTime +continuousTime)){
           decel(); 
         }
+        Serial.println(dcA); 
+        Serial.println(dcB); 
         analogWrite(ENA, dcA*255); 
         analogWrite(ENB, dcB*255); 
     }
@@ -220,26 +221,18 @@ void sample_time(){
 
 //interrupt functions called on rising edge of pin 2 and 3 (each time a hole passes in front of the encoder)
 void ISR_encoderA() {
-  if(directionA == DIRECTION_CW){
-    rotatingCounterA++;
-  }
-  else{
-    rotatingCounterA--;
-  }     
-  if(rotatingCounterA == numberOfHoles){
-    numberOfRotationsA = numberOfRotationsA + 1; 
+  rotatingCounterA++;
+  if(rotatingCounterA == 800){
+    numberOfRotationsA = numberOfRotationsA + 1;
+    rotatingCounterA = 0; 
   }
 }
 
 void ISR_encoderB() {
-  if(directionB == DIRECTION_CW){
-    rotatingCounterB++;
-  }
-  else{
-    rotatingCounterB--;
-  }     
-  if(rotatingCounterB == numberOfHoles){
-    numberOfRotationsB = numberOfRotationsB + 1; 
+  rotatingCounterB++;  
+  if(rotatingCounterB == 800){
+    numberOfRotationsB = numberOfRotationsB + 1;
+    rotatingCounterB = 0;  
   }
 }
 
@@ -334,7 +327,7 @@ void check_sensors() {
   delayMicroseconds(10);             //sends the ultrasonic wave during 10µs
   digitalWrite(triggerPin2, LOW);
   sensorTime2 = pulseIn(echoPin2, HIGH);
-  distanceFront = sensorTime2 * 0.034 / 2;
+  distanceBelow = sensorTime2 * 0.034 / 2;
 
   //sensor3
   digitalWrite(triggerPin3, LOW);    //first restart the trigger pin
@@ -352,16 +345,16 @@ void check_sensors() {
   delayMicroseconds(10);             //sends the ultrasonic wave during 10µs
   digitalWrite(triggerPin4, LOW);
   sensorTime4 = pulseIn(echoPin4, HIGH);
-  distanceBelow = sensorTime4 * 0.034 / 2;
+  distanceFront = sensorTime4 * 0.034 / 2;
 
-  if (distanceFront <= 15 ){
+  if (distanceFront <= minimalDistance ){
     //obstacle in front: we're gonna start spinning
     //if obstacle is on the left and front turn right
-    if (distanceLeft <= 15 && distanceRight > 15){
+    if (distanceLeft <= minimalDistance && distanceRight > minimalDistance){
       turn_right(); 
     }
     //if obstacle is on the right and front turn left
-    else if (distanceLeft > 15 && distanceRight <= 15){
+    else if (distanceLeft > minimalDistance && distanceRight <= minimalDistance){
       turn_left(); 
     }
   }
