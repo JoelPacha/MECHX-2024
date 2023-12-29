@@ -42,9 +42,9 @@
 //globals for loop control
 #define DIRECTION_CW 0   // clockwise direction
 #define DIRECTION_CCW 1  // counter-clockwise direction
-#define KP 11     //1.03/(2*0.135 )
+#define KP 20     //1.03/(2*0.135 )
 #define PI 3.14159265358979323846
-#define E 0.175
+#define E 0.18
 #define RADIUS 0.038
 
 //variables used in the interrupts should be "volatile" type to avoid unexpected behavior
@@ -57,32 +57,30 @@ volatile int directionB = DIRECTION_CW;
 const int numberOfHoles = 20; 
 
 //dutycycles of PWM signals 
-int dcA = 0; 
-int dcB = 0; 
+float dcA = 0; 
+float dcB = 0; 
 
 //ultrasonic sensors output and input 
-const int triggerPin1 = 2;
-const int echoPin1 = 0; 
+const int triggerPin1 = 15;
+const int echoPin1 = 14; 
 const int triggerPin2 = 4;
-const int echoPin2 = 1; 
+const int echoPin2 = 5; 
 const int triggerPin3 = 7;
-const int echoPin3 = 2;
-const int triggerPin4 = 19;
-const int echoPin4 = 18;
+const int echoPin3 = 6;
+const int triggerPin4 = 16;
+const int echoPin4 = 17;
 
 //timevariables for each sensors measuring the time the sound signal takes to come back
 //sensor 1 is left, 2 is below, 3 is right, 4 is front
 long sensorTime1;
 long sensorTime2;
-long sensorTime3;
 long sensorTime4; 
 
 //distances between sensors and obstacles
-int distanceLeft;
-int distanceFront;
-int distanceRight;
-int distanceBelow; 
-int minimalDistance = 20; 
+float distanceLeft;
+float distanceFront;
+float distanceRight;
+float minimalDistance = 20; 
 ////////////////////////variables for loop control
 float Kp = 0; 
 float totalAngle = 90;  
@@ -100,10 +98,11 @@ float continuousTime = 0;
 float totalTime = 0; 
 
 float t = 0; 
+unsigned long t_start = 0; 
 float t_continuous = 0; 
 float t_decel = 0; 
 float ref = 0; 
-float tolerance = 0.01; 
+float tolerance = 0.08; 
 
 //positions on the wheels in m and degrees
 float posA = 0; 
@@ -122,7 +121,7 @@ bool stopRotation = 1;
 void calcul(){
   distanceTotal = totalAngle * PI/180 * E/2;
   Kp = KP;
-  if(distanceTotal>0.5){
+  if(distanceTotal>0.5){    //in case the angle chosen by the user is big like 180 or 360
   distanceContinuous = distanceTotal - distanceAccel - distanceDecel; 
   continuousTime = distanceContinuous/0.5; 
   totalTime = accelTime + decelTime + continuousTime;
@@ -133,19 +132,19 @@ void calcul(){
   distanceAccel = distanceTotal/2;
   distanceDecel = distanceTotal/2;
   accelTime  = sqrt(2 * distanceAccel/0.5); //acceleration of motors is 0.5 s/m^2
-  decelTime = sqrt(2 * distanceDecel/(0.5)); 
+  decelTime = sqrt(2 * distanceDecel/0.5); 
   totalTime = accelTime + decelTime ;
   }
 }
 
 //calculates the distances in meters done by prototype
 void calculate_posA(){
-    posADegree = numberOfRotationsA*360 + (rotatingCounterA+1)/1440;      
+    posADegree = numberOfRotationsA*360 + (rotatingCounterA)*0.45;      
     posA = posADegree*2*PI/360*RADIUS;                    
 }
 
 void calculate_posB(){
-    posBDegree = numberOfRotationsB*360 + rotatingCounterB+1;
+    posBDegree = numberOfRotationsB*360 + (rotatingCounterB)*0.45;
     posB = posBDegree*2*PI/360*RADIUS;
 }
 
@@ -157,7 +156,7 @@ void regulate(float ref){
     errorA = ref-posA; 
     errorB = ref-posB;  
     dcA = Kp * errorA; 
-    dcB = Kp * errorB; 
+    dcB = Kp * errorB;
 }
 
 //defines the input signal
@@ -175,29 +174,39 @@ void continuous(){
 void decel(){
     t_decel = t-accelTime-continuousTime; 
     ref = -0.5*pow(t_decel,2)/2 + distanceAccel + distanceContinuous + (0.5*accelTime)*t_decel; 
+    if (ref <0){
+      stop(); 
+    }
     regulate(ref);
 }
 
 void stop(){
-    /*calculate_posA(); 
-    calculate_posB(); 
-    ref = distanceTotal; 
-    errorA = ref-posA; 
-    errorA = ref-posB;  
-    dcA = Kp * errorA; 
-    dcB = Kp * errorB; */
+    Serial.println("stop"); 
     stopRotation = 1; 
-    dcA = 0.5; 
-    dcB = 0.5; 
+    dcA = 0.5; //go forward again
+    dcB = 0.44; 
 }
 
-void sample_time(){
+void sample_time(){     //once a turning motion is launched, this function is called and doesn't use the sensors (check sensors is not being called) until the rotation is done
+  rotatingCounterA = 0; //initializing all the variables for the regulation
+  rotatingCounterB = 0; 
+  numberOfRotationsA = 0; 
+  numberOfRotationsB = 0; 
+  posA = 0; 
+  posB = 0; 
+  posADegree = 0; 
+  posBDegree = 0; 
+  t = 0;
+  t_start = millis(); 
   while(!stopRotation){
-    t = t+0.001; 
+    t = 0.001*(millis()-t_start);
+    Serial.println("t="); 
+    Serial.println(t); 
+   
     errorTotalA = distanceTotal-posA; 
     errorTotalB = distanceTotal-posB;
     if ( (errorTotalA > tolerance) || (errorTotalB > tolerance) ){
-        if (t<accelTime && t>0){
+        if (t<accelTime && t>=0){
           accel();
         }
         else if(t<(continuousTime+ accelTime)){
@@ -206,22 +215,19 @@ void sample_time(){
         else if(t>(accelTime +continuousTime)){
           decel(); 
         }
-        Serial.println(dcA); 
-        Serial.println(dcB); 
         analogWrite(ENA, dcA*255); 
         analogWrite(ENB, dcB*255); 
     }
     else{
-        stop(); 
+        stop(); //we stop once one of the wheels is close enough to its destination
     }
-    delay(1); 
   }
 }
 
 
 //interrupt functions called on rising edge of pin 2 and 3 (each time a hole passes in front of the encoder)
 void ISR_encoderA() {
-  rotatingCounterA++;
+  rotatingCounterA = rotatingCounterA + 1 ;
   if(rotatingCounterA == 800){
     numberOfRotationsA = numberOfRotationsA + 1;
     rotatingCounterA = 0; 
@@ -229,7 +235,7 @@ void ISR_encoderA() {
 }
 
 void ISR_encoderB() {
-  rotatingCounterB++;  
+  rotatingCounterB = rotatingCounterB +1;  
   if(rotatingCounterB == 800){
     numberOfRotationsB = numberOfRotationsB + 1;
     rotatingCounterB = 0;  
@@ -278,29 +284,25 @@ void setup() {
 
 }
 
-void turn_right(){
-  directionA = DIRECTION_CCW; 
-  directionB = DIRECTION_CW;            //clock wise = forward      
+void turn_right(){      
   stopRotation = 0; 
   //right wheel goes backward 
-  digitalWrite(IN1, LOW);
-  digitalWrite(IN2, HIGH);
+  digitalWrite(IN1, HIGH);
+  digitalWrite(IN2, LOW);
   //left wheel goes forward
-  digitalWrite(IN3, HIGH);
-  digitalWrite(IN4, LOW);
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, HIGH);
   sample_time(); 
 }
 
 void turn_left(){
-  directionA = DIRECTION_CW; 
-  directionB = DIRECTION_CCW; 
   stopRotation = 0; 
   //right wheel goes forward 
-  digitalWrite(IN1, HIGH);
-  digitalWrite(IN2, LOW);
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, HIGH);
   //left wheel goes  backward
-  digitalWrite(IN3, LOW);
-  digitalWrite(IN4, HIGH);
+  digitalWrite(IN3, HIGH);
+  digitalWrite(IN4, LOW);
   sample_time(); 
 }
 
@@ -311,7 +313,7 @@ void check_sensors() {
 
   //1. continuously checks the sensors for obstacle
 
-  //sensor1 
+  //sensor1 = 
   digitalWrite(triggerPin1, LOW);    //first restart the trigger pin
   delayMicroseconds(2);              //wait of 2µs
   digitalWrite(triggerPin1, HIGH);   
@@ -320,25 +322,16 @@ void check_sensors() {
   sensorTime1 = pulseIn(echoPin1, HIGH);
   distanceLeft = sensorTime1 * 0.034 / 2;   // transform into centimers 
 
-  //sensor2
+  //sensor2 = right
   digitalWrite(triggerPin2, LOW);    //first restart the trigger pin
   delayMicroseconds(2);              //wait of 2µs
   digitalWrite(triggerPin2, HIGH);   
   delayMicroseconds(10);             //sends the ultrasonic wave during 10µs
   digitalWrite(triggerPin2, LOW);
   sensorTime2 = pulseIn(echoPin2, HIGH);
-  distanceBelow = sensorTime2 * 0.034 / 2;
+  distanceRight = sensorTime2 * 0.034 / 2;
 
-  //sensor3
-  digitalWrite(triggerPin3, LOW);    //first restart the trigger pin
-  delayMicroseconds(2);              //wait of 2µs
-  digitalWrite(triggerPin3, HIGH);   
-  delayMicroseconds(10);             //sends the ultrasonic wave during 10µs
-  digitalWrite(triggerPin3, LOW);
-  sensorTime3 = pulseIn(echoPin3, HIGH);
-  distanceRight = sensorTime3 * 0.034 / 2;
-
-   //sensor4
+   //sensor4 = front 
   digitalWrite(triggerPin4, LOW);    //first restart the trigger pin
   delayMicroseconds(2);              //wait of 2µs
   digitalWrite(triggerPin4, HIGH);   
@@ -347,42 +340,41 @@ void check_sensors() {
   sensorTime4 = pulseIn(echoPin4, HIGH);
   distanceFront = sensorTime4 * 0.034 / 2;
 
-  if (distanceFront <= minimalDistance ){
+  //2. moving in function of sensor results 
+
+  if (distanceFront <= minimalDistance && distanceFront > 1){
     //obstacle in front: we're gonna start spinning
     //if obstacle is on the left and front turn right
     if (distanceLeft <= minimalDistance && distanceRight > minimalDistance){
+      Serial.println("turnin right"); 
       turn_right(); 
     }
     //if obstacle is on the right and front turn left
     else if (distanceLeft > minimalDistance && distanceRight <= minimalDistance){
+      Serial.println("turnin left"); 
       turn_left(); 
+    }
+    else{
+      turn_right();       //turns right if only an obstacle in front to make circles in the room
     }
   }
   else{
-    //wheels go forward
+    // wheels go forward if no obstacle, motors don't have the same dynamics so these values ensure that we stay on a more or less straight line
     dcA = 0.5; 
-    dcA = 0.5; 
-    digitalWrite(IN1, HIGH);
-    digitalWrite(IN2, LOW);
-    digitalWrite(IN3, HIGH);
-    digitalWrite(IN4, LOW);
+    dcB = 0.44; 
+    digitalWrite(IN1, LOW);
+    digitalWrite(IN2, HIGH);
+    digitalWrite(IN3, LOW);
+    digitalWrite(IN4, HIGH);
     analogWrite(ENA, dcA*255); 
     analogWrite(ENB, dcB*255); 
-  }
+    
+  } 
 }
 
 
 void loop() {
-    Serial.print("DIRECTION: ");
-    if (directionA == DIRECTION_CW)
-      Serial.print("Clockwise");
-    else
-      Serial.print("Counter-clockwise");
-
-    Serial.print(" | COUNTER: ");
-    Serial.println(rotatingCounterA);
-    
-    check_sensors(); 
+     check_sensors(); 
 }
 
 
